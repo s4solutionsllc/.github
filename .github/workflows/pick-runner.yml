@@ -1,8 +1,21 @@
 name: Pick self-hosted runner
 
 # Reusable workflow: picks a self-hosted runner label by priority order
-# (r2d2 > media > bb8), skipping runners that are offline/busy and skipping
-# bb8 entirely when the caller marks its job as too heavy for it.
+# (R2D2 > media > BB8), skipping runners that are offline/busy and skipping
+# BB8 entirely when the caller marks its job as too heavy for it.
+#
+# These runners are registered at the ORG level (shared via the "Default"
+# runner group), so querying their status requires the org-level Actions
+# API (`GET /orgs/{org}/actions/runners`). The default GITHUB_TOKEN is
+# repo-scoped and cannot call that endpoint, so this workflow needs a PAT
+# (classic with `admin:org`, or fine-grained with the org "Self-hosted
+# runners: Read-only" permission) passed in as a secret.
+#
+# One-time setup:
+#   1. Create the PAT described above.
+#   2. Add it as an ORG secret named ORG_RUNNERS_TOKEN (Settings > Secrets
+#      and variables > Actions > New organization secret), with visibility
+#      covering whichever repos will call this workflow.
 #
 # Usage from another repo in this org:
 #
@@ -11,17 +24,14 @@ name: Pick self-hosted runner
 #       uses: s4solutionsllc/.github/.github/workflows/pick-runner.yml@main
 #       with:
 #         bb8_eligible: false   # omit or set true for lightweight jobs
+#       secrets:
+#         runners_token: ${{ secrets.ORG_RUNNERS_TOKEN }}
 #
 #     build:
 #       needs: pick
 #       runs-on: ${{ needs.pick.outputs.runner_label }}
 #       steps:
 #         - run: echo "running on ${{ needs.pick.outputs.runner_label }}"
-#
-# Requires each self-hosted runner to be registered with a unique label
-# matching its box name (r2d2, media, bb8) in addition to any existing
-# labels, e.g.:
-#   ./config.sh --labels self-hosted,linux,x64,r2d2
 
 on:
   workflow_call:
@@ -31,6 +41,10 @@ on:
         required: false
         type: boolean
         default: true
+    secrets:
+      runners_token:
+        description: "PAT with org-level 'Self-hosted runners: Read-only' permission"
+        required: true
     outputs:
       runner_label:
         description: "Label of the chosen runner"
@@ -39,10 +53,6 @@ on:
 jobs:
   pick:
     runs-on: ubuntu-latest
-    permissions:
-      # Self-hosted runner status lives under the Actions API but is gated
-      # by the Administration permission, not Actions.
-      administration: read
     outputs:
       runner_label: ${{ steps.pick.outputs.label }}
     steps:
@@ -50,33 +60,35 @@ jobs:
         id: pick
         uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.runners_token }}
           script: |
-            const priorityOrder = ['r2d2', 'media', 'bb8']
+            const priorityOrder = ['R2D2', 'media', 'BB8']
             const bb8Eligible = ${{ inputs.bb8_eligible }}
 
-            const { data } = await github.rest.actions.listSelfHostedRunnersForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
+            const { data } = await github.rest.actions.listSelfHostedRunnersForOrg({
+              org: context.repo.owner,
               per_page: 100,
             })
             const runners = data.runners
 
+            const norm = (s) => s.toLowerCase()
+
             const isIdle = (label) => runners.some(r =>
               r.status === 'online' &&
               r.busy === false &&
-              r.labels.some(l => l.name === label)
+              r.labels.some(l => norm(l.name) === norm(label))
             )
 
             let chosen = null
             for (const label of priorityOrder) {
-              if (label === 'bb8' && !bb8Eligible) continue
+              if (norm(label) === 'bb8' && !bb8Eligible) continue
               if (isIdle(label)) { chosen = label; break }
             }
 
             if (!chosen) {
               // Nothing idle right now - queue on the lowest-priority eligible
               // runner so the job waits instead of failing to schedule.
-              chosen = bb8Eligible ? 'bb8' : 'media'
+              chosen = bb8Eligible ? 'BB8' : 'media'
               core.info(`No idle runner found; queuing on '${chosen}'`)
             } else {
               core.info(`Selected idle runner: '${chosen}'`)
