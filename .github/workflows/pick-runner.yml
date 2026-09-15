@@ -1,7 +1,7 @@
 name: Pick self-hosted runner
 
 # Reusable workflow: picks a self-hosted runner label by priority order
-# (R2D2 > media > BB8), skipping runners that are offline/busy and skipping
+# (R2D2 > Coruscant > BB8), skipping runners that are offline/busy and skipping
 # BB8 entirely when the caller marks its job as too heavy for it.
 #
 # These runners are registered at the ORG level (shared via the "Default"
@@ -62,7 +62,7 @@ jobs:
         with:
           github-token: ${{ secrets.runners_token }}
           script: |
-            const priorityOrder = ['R2D2', 'media', 'BB8']
+            const priorityOrder = ['R2D2', 'Coruscant', 'BB8']
             const bb8Eligible = ${{ inputs.bb8_eligible }}
 
             const { data } = await github.rest.actions.listSelfHostedRunnersForOrg({
@@ -88,7 +88,7 @@ jobs:
             if (!chosen) {
               // Nothing idle right now - queue on the lowest-priority eligible
               // runner so the job waits instead of failing to schedule.
-              chosen = bb8Eligible ? 'BB8' : 'media'
+              chosen = bb8Eligible ? 'BB8' : 'Coruscant'
               core.info(`No idle runner found; queuing on '${chosen}'`)
             } else {
               core.info(`Selected idle runner: '${chosen}'`)
