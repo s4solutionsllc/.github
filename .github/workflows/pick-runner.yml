@@ -1,8 +1,9 @@
 name: Pick self-hosted runner
 
 # Reusable workflow: picks a self-hosted runner label by priority order
-# (R2D2 > Coruscant > BB8), skipping runners that are offline/busy and skipping
-# BB8 entirely when the caller marks its job as too heavy for it.
+# (R2D2 > Coruscant), skipping runners that are offline/busy. BB8 was retired
+# from CI on 2026-09-28; `bb8_eligible` is kept as a deprecated no-op input
+# so existing callers that still pass it don't fail validation.
 #
 # These runners are registered at the ORG level (shared via the "Default"
 # runner group), so querying their status requires the org-level Actions
@@ -22,8 +23,6 @@ name: Pick self-hosted runner
 #   jobs:
 #     pick:
 #       uses: s4solutionsllc/.github/.github/workflows/pick-runner.yml@main
-#       with:
-#         bb8_eligible: false   # omit or set true for lightweight jobs
 #       secrets:
 #         runners_token: ${{ secrets.ORG_RUNNERS_TOKEN }}
 #
@@ -37,7 +36,7 @@ on:
   workflow_call:
     inputs:
       bb8_eligible:
-        description: "Whether BB8 (lowest-capability runner) may run this job"
+        description: "Deprecated no-op — BB8 was retired from CI on 2026-09-28"
         required: false
         type: boolean
         default: true
@@ -52,7 +51,10 @@ on:
 
 jobs:
   pick:
-    runs-on: ubuntu-latest
+    # Picking a self-hosted box must not itself spend hosted minutes. If
+    # every self-hosted runner is busy this job queues too, which is where
+    # the caller's job would have queued anyway.
+    runs-on: [self-hosted, linux, x64]
     outputs:
       runner_label: ${{ steps.pick.outputs.label }}
     steps:
@@ -62,8 +64,7 @@ jobs:
         with:
           github-token: ${{ secrets.runners_token }}
           script: |
-            const priorityOrder = ['R2D2', 'Coruscant', 'BB8']
-            const bb8Eligible = ${{ inputs.bb8_eligible }}
+            const priorityOrder = ['R2D2', 'Coruscant']
 
             const { data } = await github.rest.actions.listSelfHostedRunnersForOrg({
               org: context.repo.owner,
@@ -81,14 +82,14 @@ jobs:
 
             let chosen = null
             for (const label of priorityOrder) {
-              if (norm(label) === 'bb8' && !bb8Eligible) continue
               if (isIdle(label)) { chosen = label; break }
             }
 
             if (!chosen) {
-              // Nothing idle right now - queue on the lowest-priority eligible
-              // runner so the job waits instead of failing to schedule.
-              chosen = bb8Eligible ? 'BB8' : 'Coruscant'
+              // Nothing idle right now - queue on R2D2, the box with the
+              // most runner slots, so the job waits instead of failing to
+              // schedule.
+              chosen = 'R2D2'
               core.info(`No idle runner found; queuing on '${chosen}'`)
             } else {
               core.info(`Selected idle runner: '${chosen}'`)
