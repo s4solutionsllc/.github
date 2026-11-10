@@ -4,21 +4,22 @@
 
 <br/>
 
-**AI Strategy & Technology Advisory** — practical AI consulting, fractional CIO leadership, and custom applications for growing businesses.
+**Fixed-price IT, operations and AI consulting for small and mid-sized businesses.**
+We quote the outcome, write the metric into the agreement, and tie 20% of our fee to whether it lands.
 
-We help growing businesses cut through the noise with practical AI solutions, fractional CIO leadership, and custom applications built to scale.
+### Open source we maintain
 
-### What we do
+- **[Nexis](https://github.com/s4solutionsllc/Nexis)**: a system optimizer, monitor and manager for Linux and macOS. Qt 6 / C++17, GPL-3.0. Install with Homebrew ([tap](https://github.com/s4solutionsllc/homebrew-nexis)), PPA, COPR, AUR or AppImage.
 
-- **AI Consulting** — Practical automation strategies tailored to your workflow
-- **vCIO Advisory** — Fractional tech leadership without the full-time cost
-- **Custom Apps** — Purpose-built solutions that integrate with your stack
-- **IT Operations** — Infrastructure guidance and vendor management
+Found a bug or have an idea? Open an issue on the repo. We read every one.
 
-### Find us
+### Software we build and run
 
-[s4solutions.ai](https://s4solutions.ai) · [Schedule a consultation](https://s4solutions.ai)
+[KinshipRM](https://kinshiprm.app) · safeT1D · Sinews of War · Scytale (coming soon). [See all products](https://s4solutions.ai/products?utm_source=github&utm_medium=referral&utm_campaign=org_profile)
 
-<br/>
+### Work with us
 
-<img src="https://img.shields.io/badge/AI%20Strategy%20%26%20Advisory-EF6C35?style=flat-square&labelColor=171726" alt="AI Strategy & Advisory"/>
+We take on AI consulting, vCIO advisory, custom apps and IT operations as one engagement at one fixed price.
+[How we price](https://s4solutions.ai/how-we-price?utm_source=github&utm_medium=referral&utm_campaign=org_profile) · [Book a 30-minute call](https://s4solutions.ai/contact?utm_source=github&utm_medium=referral&utm_campaign=org_profile) · [LinkedIn](https://www.linkedin.com/company/s4-solutions-ai)
+
+<img src="https://img.shields.io/badge/Fixed%20price.%20Measured%20outcome.-EF6C35?style=flat-square&labelColor=171726" alt="Fixed price. Measured outcome."/>
