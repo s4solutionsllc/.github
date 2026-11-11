@@ -4,7 +4,7 @@
 
 <br/>
 
-**Fixed-price IT, operations and AI consulting for small and mid-sized businesses.**
+**IT, operations and AI consulting for growing businesses. Our fee is tied to the results we deliver.**
 We quote the outcome, write the metric into the agreement, and tie 20% of our fee to whether it lands.
 
 ### Open source we maintain
