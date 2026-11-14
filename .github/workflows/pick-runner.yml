@@ -1,9 +1,23 @@
 name: Pick self-hosted runner
 
-# Reusable workflow: picks a self-hosted runner label by priority order
-# (R2D2 > Coruscant), skipping runners that are offline/busy. BB8 was retired
-# from CI on 2026-09-28; `bb8_eligible` is kept as a deprecated no-op input
-# so existing callers that still pass it don't fail validation.
+# Reusable workflow: picks a self-hosted runner by the org's priority order,
+# R2D2 > Kamino-Linux > Coruscant, skipping runners that are offline/busy.
+#
+# Kamino-Linux is the arm64 Linux VM on Kamino. A caller opts into it with
+# `arm64_ok: true` once its job has passed a run on the Kamino-Linux label;
+# without that input the order is R2D2 > Coruscant (x64 only). BB8 was
+# retired from CI on 2026-09-28; `bb8_eligible` is kept as a deprecated
+# no-op input so existing callers that still pass it don't fail validation.
+#
+# Outputs:
+#   labels       JSON array for `runs-on: ${{ fromJSON(needs.pick.outputs.labels) }}`.
+#                Idle box → that box's full label set. Nothing idle (or the
+#                fleet's state is unreadable) → the x64 fleet,
+#                ["self-hosted","linux","x64"], so the job queues on the first
+#                x64 runner to free up and never spends hosted minutes.
+#   runner_label Legacy single label (R2D2 or Coruscant only) for callers that
+#                still write `[self-hosted, linux, x64, "<label>"]`. Never
+#                Kamino-Linux, which is not x64.
 #
 # These runners are registered at the ORG level (shared via the "Default"
 # runner group), so querying their status requires the org-level Actions
@@ -23,18 +37,23 @@ name: Pick self-hosted runner
 #   jobs:
 #     pick:
 #       uses: s4solutionsllc/.github/.github/workflows/pick-runner.yml@main
+#       with:
+#         arm64_ok: true
 #       secrets:
 #         runners_token: ${{ secrets.ORG_RUNNERS_TOKEN }}
 #
 #     build:
 #       needs: pick
-#       runs-on: ${{ needs.pick.outputs.runner_label }}
-#       steps:
-#         - run: echo "running on ${{ needs.pick.outputs.runner_label }}"
+#       runs-on: ${{ fromJSON(needs.pick.outputs.labels) }}
 
 on:
   workflow_call:
     inputs:
+      arm64_ok:
+        description: "Allow the arm64 Kamino-Linux pool (between R2D2 and Coruscant). Set only after the job has passed on Kamino-Linux."
+        required: false
+        type: boolean
+        default: false
       bb8_eligible:
         description: "Deprecated no-op — BB8 was retired from CI on 2026-09-28"
         required: false
@@ -45,54 +64,64 @@ on:
         description: "PAT with org-level 'Self-hosted runners: Read-only' permission"
         required: true
     outputs:
+      labels:
+        description: "JSON array of runner labels for runs-on via fromJSON()"
+        value: ${{ jobs.pick.outputs.labels }}
       runner_label:
-        description: "Label of the chosen runner"
+        description: "Legacy: R2D2 or Coruscant, for callers that prefix [self-hosted, linux, x64]"
         value: ${{ jobs.pick.outputs.runner_label }}
 
 jobs:
   pick:
     # Picking a self-hosted box must not itself spend hosted minutes. If
-    # every self-hosted runner is busy this job queues too, which is where
-    # the caller's job would have queued anyway.
+    # every x64 self-hosted runner is busy this job queues too, which is
+    # where the caller's job would have queued anyway.
     runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 5
     outputs:
+      labels: ${{ steps.pick.outputs.labels }}
       runner_label: ${{ steps.pick.outputs.label }}
     steps:
       - name: Query runner availability and pick by priority
         id: pick
         uses: actions/github-script@v7
+        env:
+          ARM64_OK: ${{ inputs.arm64_ok }}
         with:
           github-token: ${{ secrets.runners_token }}
           script: |
-            const priorityOrder = ['R2D2', 'Coruscant']
+            const X64 = ['self-hosted', 'linux', 'x64']
+            const pools = [
+              { name: 'R2D2', labels: [...X64, 'R2D2'], x64: true },
+              { name: 'Kamino-Linux', labels: ['self-hosted', 'linux', 'arm64', 'Kamino-Linux'], x64: false },
+              { name: 'Coruscant', labels: [...X64, 'Coruscant'], x64: true },
+            ].filter(p => p.x64 || process.env.ARM64_OK === 'true')
 
-            const { data } = await github.rest.actions.listSelfHostedRunnersForOrg({
-              org: context.repo.owner,
-              per_page: 100,
-            })
-            const runners = data.runners
+            const finish = (labels, legacy, why) => {
+              core.info(`${why} -> ${JSON.stringify(labels)}`)
+              core.setOutput('labels', JSON.stringify(labels))
+              core.setOutput('label', legacy)
+              return core.summary.addRaw(`Runner pick: ${why} → \`${JSON.stringify(labels)}\``).write()
+            }
+
+            let runners
+            try {
+              const { data } = await github.rest.actions.listSelfHostedRunnersForOrg({
+                org: context.repo.owner,
+                per_page: 100,
+              })
+              runners = data.runners
+            } catch (e) {
+              return finish(X64, 'R2D2', `runner list unreadable (${e.message}); queuing on the x64 fleet`)
+            }
 
             const norm = (s) => s.toLowerCase()
+            const idle = (name) => runners.some(r =>
+              r.status === 'online' && r.busy === false &&
+              r.labels.some(l => norm(l.name) === norm(name)))
 
-            const isIdle = (label) => runners.some(r =>
-              r.status === 'online' &&
-              r.busy === false &&
-              r.labels.some(l => norm(l.name) === norm(label))
-            )
-
-            let chosen = null
-            for (const label of priorityOrder) {
-              if (isIdle(label)) { chosen = label; break }
+            const pool = pools.find(p => idle(p.name))
+            if (pool) {
+              return finish(pool.labels, pool.x64 ? pool.name : 'R2D2', `idle runner on '${pool.name}'`)
             }
-
-            if (!chosen) {
-              // Nothing idle right now - queue on R2D2, the box with the
-              // most runner slots, so the job waits instead of failing to
-              // schedule.
-              chosen = 'R2D2'
-              core.info(`No idle runner found; queuing on '${chosen}'`)
-            } else {
-              core.info(`Selected idle runner: '${chosen}'`)
-            }
-
-            core.setOutput('label', chosen)
+            return finish(X64, 'R2D2', 'no idle runner; queuing on the x64 fleet')
