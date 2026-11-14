@@ -5,7 +5,13 @@ name: Pick self-hosted runner
 #
 # Kamino-Linux is the arm64 Linux VM on Kamino. A caller opts into it with
 # `arm64_ok: true` once its job has passed a run on the Kamino-Linux label;
-# without that input the order is R2D2 > Coruscant (x64 only). BB8 was
+# without that input the order is R2D2 > Coruscant (x64 only).
+#
+# The pick is made once per calling workflow and every job that uses it
+# lands on the picked box, so a box is only picked when it has at least
+# `jobs` idle runners. Pass `jobs` = the number of jobs that use the
+# output. When no box has room for all of them, the run goes to the x64
+# fleet labels so its jobs spread across every x64 box. BB8 was
 # retired from CI on 2026-09-28; `bb8_eligible` is kept as a deprecated
 # no-op input so existing callers that still pass it don't fail validation.
 #
@@ -39,6 +45,7 @@ name: Pick self-hosted runner
 #       uses: s4solutionsllc/.github/.github/workflows/pick-runner.yml@main
 #       with:
 #         arm64_ok: true
+#         jobs: 5
 #       secrets:
 #         runners_token: ${{ secrets.ORG_RUNNERS_TOKEN }}
 #
@@ -54,6 +61,11 @@ on:
         required: false
         type: boolean
         default: false
+      jobs:
+        description: "How many of the caller's jobs run on the picked labels. A box is picked only if it has this many idle runners."
+        required: false
+        type: number
+        default: 1
       bb8_eligible:
         description: "Deprecated no-op — BB8 was retired from CI on 2026-09-28"
         required: false
@@ -87,6 +99,7 @@ jobs:
         uses: actions/github-script@v7
         env:
           ARM64_OK: ${{ inputs.arm64_ok }}
+          JOBS: ${{ inputs.jobs }}
         with:
           github-token: ${{ secrets.runners_token }}
           script: |
@@ -116,12 +129,15 @@ jobs:
             }
 
             const norm = (s) => s.toLowerCase()
-            const idle = (name) => runners.some(r =>
+            const need = Math.max(1, Number(process.env.JOBS) || 1)
+            const idle = (name) => runners.filter(r =>
               r.status === 'online' && r.busy === false &&
-              r.labels.some(l => norm(l.name) === norm(name)))
+              r.labels.some(l => norm(l.name) === norm(name))).length
 
-            const pool = pools.find(p => idle(p.name))
+            const pool = pools.find(p => idle(p.name) >= need)
             if (pool) {
-              return finish(pool.labels, pool.x64 ? pool.name : 'R2D2', `idle runner on '${pool.name}'`)
+              return finish(pool.labels, pool.x64 ? pool.name : 'R2D2',
+                `${idle(pool.name)} idle on '${pool.name}' for ${need} job(s)`)
             }
-            return finish(X64, 'R2D2', 'no idle runner; queuing on the x64 fleet')
+            const counts = pools.map(p => `${p.name}=${idle(p.name)}`).join(', ')
+            return finish(X64, 'R2D2', `no box has ${need} idle (${counts}); spreading over the x64 fleet`)
