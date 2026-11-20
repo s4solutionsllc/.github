@@ -15,7 +15,7 @@ Found a bug or have an idea? Open an issue on the repo. We read every one.
 
 ### Software we build and run
 
-[KinshipRM](https://kinshiprm.app) · safeT1D · Sinews of War · Scytale (coming soon). [See all products](https://s4solutions.ai/products?utm_source=github&utm_medium=referral&utm_campaign=org_profile)
+[KinshipRM](https://kinshiprm.app) · [safeT1D](https://apps.apple.com/us/app/safet1d/id6817498443) · [Sinews of War](https://s4solutions.itch.io/sinews-of-war-the-american-revolution) · Scytale (coming soon). [See all products](https://s4solutions.ai/products?utm_source=github&utm_medium=referral&utm_campaign=org_profile)
 
 ### Work with us
 
